@@ -12,10 +12,10 @@
 
 #include <sycl/sycl.hpp>
 
-using uint3 = std::array<uint32_t, 3>;
-using vec2 = std::array<float, 2>;
-using vec3 = std::array<float, 3>;
-using vec4 = std::array<float, 4>;
+// ### material types
+#define eDiffuseMaterial        1
+#define eReflectiveMaterial     2
+#define eRefractiveMaterial     3
 
 // platform specific defines
 #if defined(_WIN32) || defined(WIN32)
@@ -23,6 +23,11 @@ int fileopen(FILE **f, const char *filename) { return (int)fopen_s(f, filename, 
 #elif defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 int fileopen(FILE **f, const char *filename) { *f = fopen(filename, "w"); return 0; }
 #endif 
+
+using uint3 = std::array<uint32_t, 3>;
+using vec2 = std::array<float, 2>;
+using vec3 = std::array<float, 3>;
+using vec4 = std::array<float, 4>;
 
 namespace {
     constexpr float pi = 3.141592653589793f;
@@ -36,19 +41,49 @@ namespace {
         vec3 d; 
     };
 
+    // enum class eObjType {
+    //     eSphere,
+    //     ePlane,
+    // };
+    constexpr uint32_t eSphere = 0;
+    constexpr uint32_t ePlane  = 1;
+
+    struct HitInfo {
+        float rayT;
+        //eObjType objType;
+        uint32_t objType;
+        uint32_t objIdx;
+    };
+
+    struct Plane { 
+        vec4 equation; 
+        vec4 e; 
+        vec4 c; 
+    };
+
     struct Sphere { 
         vec4 geo; 
         vec4 e; 
         vec4 c; 
     };
 
+
+    constexpr Plane planes[] = {  // center.xyz, radius  |  emmission.xyz, 0  |  color.rgb, refltype
+        vec4{ -1.0f, +0.0f, +0.0f, +2.6f }, vec4{ 0.0f, 0.0f, 0.0f, 0.0f }, vec4{ 0.85f, 0.25f, 0.25f, 1.0f }, // Left Wall
+        vec4{ +1.0f, +0.0f, +0.0f, +2.6f }, vec4{ 0.0f, 0.0f, 0.0f, 0.0f }, vec4{ 0.25f, 0.35f, 0.85f, 1.0f }, // Right Wall
+        vec4{ +0.0f, +1.0f, +0.0f, +2.0f }, vec4{ 0.0f, 0.0f, 0.0f, 0.0f }, vec4{ 0.75f, 0.75f, 0.75f, 1.0f }, // Ceiling
+        vec4{ +0.0f, -1.0f, +0.0f, +2.0f }, vec4{ 0.0f, 0.0f, 0.0f, 0.0f }, vec4{ 0.75f, 0.75f, 0.75f, 1.0f }, // Floor
+        vec4{ +0.0f, +0.0f, -1.0f, +2.8f }, vec4{ 0.0f, 0.0f, 0.0f, 0.0f }, vec4{ 0.85f, 0.85f, 0.25f, 1.0f }, // Back Wall
+        vec4{ +0.0f, +0.0f, +1.0f, +7.9f }, vec4{ 0.0f, 0.0f, 0.0f, 0.0f }, vec4{ 0.10f, 0.70f, 0.70f, 1.0f }, // Front Wall
+    };
+
     constexpr Sphere spheres[] = {  // center.xyz, radius  |  emmission.xyz, 0  |  color.rgb, refltype     
-        vec4{ 1e5f - 2.6f, 0.0f, 0.0f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.850f, 0.250f, 0.250f, 1.0f }, // Left (1 .. DIFFUSE)
-        vec4{ 1e5f + 2.6f, 0.0f, 0.0f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.250f, 0.350f, 0.850f, 1.0f }, // Right
-        vec4{ 0.0f, 1e5f + 2.0f, 0.0f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.750f, 0.750f, 0.750f, 1.0f }, // Top
-        vec4{ 0.0f,-1e5f - 2.0f, 0.0f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.750f, 0.750f, 0.750f, 1.0f }, // Bottom
-        vec4{ 0.0f, 0.0f, -1e5f - 2.8f, 1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.850f, 0.850f, 0.250f, 1.0f }, // Back 
-        vec4{ 0.0f, 0.0f, 1e5f + 7.9f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.100f, 0.700f, 0.700f, 1.0f }, // Front
+        // vec4{ 1e5f - 2.6f, 0.0f, 0.0f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.850f, 0.250f, 0.250f, 1.0f }, // Left (1 .. DIFFUSE)
+        // vec4{ 1e5f + 2.6f, 0.0f, 0.0f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.250f, 0.350f, 0.850f, 1.0f }, // Right
+        // vec4{ 0.0f, 1e5f + 2.0f, 0.0f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.750f, 0.750f, 0.750f, 1.0f }, // Top
+        // vec4{ 0.0f,-1e5f - 2.0f, 0.0f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.750f, 0.750f, 0.750f, 1.0f }, // Bottom
+        // vec4{ 0.0f, 0.0f, -1e5f - 2.8f, 1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.850f, 0.850f, 0.250f, 1.0f }, // Back 
+        // vec4{ 0.0f, 0.0f, 1e5f + 7.9f,  1e5f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.100f, 0.700f, 0.700f, 1.0f }, // Front
         vec4{ -1.3f, -1.2f, -1.3f,      0.8f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.999f, 0.999f, 0.999f, 2.0f }, // 2 .. REFLECTIVE
         vec4{ 1.3f, -1.2f, -0.2f,       0.8f },  vec4{   0.0f,  0.0f,  0.0f, 0.0f },  vec4{ 0.999f, 0.999f, 0.999f, 3.0f }, // 3 .. REFRACTIVE
         vec4{ 0.0f, 2.0f*0.8f, 0.0f,    0.2f },  vec4{ 100.0f,100.0f,100.0f, 0.0f },  vec4{ 0.000f, 0.000f, 0.000f, 1.0f }, // Light
@@ -152,27 +187,37 @@ namespace {
     vec3 reflect( vec3 inVec, vec3 normal ) {
         return sub( inVec, mul( normal, 2.0f * dot( inVec, normal ) ) );
     }
-
-    bool intersect( const Ray& r, 
+    
+    bool intersect( const Ray& ray, 
+                    const Plane  *const pPlanes, 
                     const Sphere *const pSpheres, 
-                    uint32_t& id, 
-                    vec3& x, 
-                    vec3& n ) { // intersect ray with scene
+                    HitInfo& hitInfo ) { // intersect ray with scene
                     
         constexpr float inf = 1e20f;
         constexpr float eps = 1e-4f;
         
         float d, t = inf;
         
+        for (uint32_t i = 0; i < _countof(planes); i++) { 
+            const vec4 planeEqu = pPlanes[i].equation;
+            const float denom = dot( ray.d, to_vec3( planeEqu ) );
+            if ( denom > eps ) {
+                d = ( planeEqu[3] - dot( ray.o, to_vec3( planeEqu ) ) ) / denom ;
+                if ( d < t ) {
+                    t = d; hitInfo.objType = ePlane; hitInfo.objIdx = i;
+                }
+            }
+        }
+        
         for (uint32_t i = 0; i < _countof(spheres); i++) { 
             const Sphere& s = pSpheres[i];                  // perform intersection test in double precision
-            //dvec3 oc = dvec3(s.geo.xyz) - r.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
+            //dvec3 oc = dvec3(s.geo.xyz) - ray.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
             
             // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
-            vec3 oc = sub( to_vec3(s.geo), r.o );
+            vec3 oc = sub( to_vec3(s.geo), ray.o );
             
-            //double b=dot(oc,r.d), det=b*b-dot(oc,oc)+s.geo.w*s.geo.w; 
-            float b = dot(oc,r.d);
+            //double b=dot(oc,ray.d), det=b*b-dot(oc,oc)+s.geo.w*s.geo.w; 
+            float b = dot(oc,ray.d);
             float det = b*b - dot(oc,oc) + s.geo[3] * s.geo[3]; 
             
             if (det < 0.0f) {
@@ -182,11 +227,12 @@ namespace {
                 // det=sqrt(det); 
             }
             d = ( d = ( b - det ) ) > eps ? d : ( ( d = ( b + det ) ) > eps ? d : inf );
-            if(d < t) { t=d; id = i; } 
+            if(d < t) { 
+                t=d; hitInfo.objType = eSphere; hitInfo.objIdx = i;
+            } 
         } 
         if (t < inf) {
-            x = add( r.o, mul( r.d, t ) );
-            n = normalize(sub(x,to_vec3(pSpheres[id].geo)));
+            hitInfo.rayT = t;
             return true;
         }
         return false;
@@ -250,12 +296,15 @@ int main(int argc, char *argv[]) {
 
     const auto numSpheres = _countof(spheres);
     std::cout << "numSpheres = " << numSpheres << std::endl;
+    const auto numPlanes = _countof(planes);
+    std::cout << "numPlanes = " << numPlanes << std::endl;
     
     try {
         sycl::queue q(d_selector, exception_handler);
 
         // Print out the device information used for the kernel code.
         std::cout << "Running on device: " << q.get_device().get_info<sycl::info::device::name>() << "\n";
+        printf( "%d x %d @ %dspp\n", resx, resy, spp );
 
         // Create arrays with "array_size" to store input and output data. Allocate
         // unified shared memory so that both CPU and device can access them.
@@ -315,102 +364,118 @@ int main(int argc, char *argv[]) {
                         
                         vec3 spos = add( cam.o, add( mul( cx, s[0] ), mul( cy, s[1] ) ) );
                         vec3 lc   = add( cam.o, mul( cam.d, 0.035f ) );           // sample on 3d sensor plane
-                        Ray r = Ray{ lc, normalize( sub( lc, spos ) ) };      // construct ray
+                        Ray ray = Ray{ lc, normalize( sub( lc, spos ) ) };      // construct ray
 
                         vec3 accrad=vec3{ 0.0f, 0.0f, 0.0f };
                         vec3 accmat=vec3{ 1.0f, 1.0f, 1.0f };        // initialize accumulated radiance and bxdf
 
                         //-- loop over ray bounces
                         float emissive = 1.0f;
-                        for (uint32_t depth = 0, maxDepth = 64; depth < maxDepth; depth++) { 
+                        for (uint32_t depth = 0, maxDepth = 12/*64*/; depth < maxDepth; depth++) { 
                             
-                            uint32_t id = 0;
-                            vec3 isectPos, isectNorm;
+                            HitInfo hitInfo;
                             
-                            if (intersect(r, spheres, id, isectPos, isectNorm)) {   // intersect ray with scene
-                                const Sphere& obj = spheres[id];
-                                
-                                vec3 nl = dot( isectNorm, r.d ) < 0.0f ? isectNorm : mul( isectNorm, -1.0f );
-                                accrad = add( accrad, mul( accmat, mul( to_vec3( obj.e ), emissive ) ) );      // add emssivie term only if emissive flag is set to 1
-                                //accmat *= obj.c.xyz;
-                                accmat = mul( accmat, to_vec3( obj.c ) );
-                                
-                                vec3 rnd = rand01( randSeed );
-                                
-                                float p = std::max(std::max(obj.c[0], obj.c[1]), obj.c[2]);  // max reflectance
-                                
-                                if (depth > 5) {
-                                    if (rnd[2] >= p) {
-                                        break;  // Russian Roulette ray termination
-                                    } else {
-                                        accmat = mul( accmat, 1.0f / p );       // Energy compensation of surviving rays
+                            // intersect ray with scene
+                            if ( !intersect( ray, planes, spheres, hitInfo ) ) { continue; }
+                            
+
+                            vec3 objEmissiveColor, objDiffuseColor;
+                            int32_t objMaterialType;
+                            vec3 isectNorm;
+                            vec3 isectPos = add( ray.o, mul( ray.d, hitInfo.rayT ) );
+                            if ( hitInfo.objType == ePlane ) {
+                                const Plane& hitPlane = planes[ hitInfo.objIdx ];
+                                objEmissiveColor = to_vec3( hitPlane.e );
+                                objDiffuseColor  = to_vec3( hitPlane.c );
+                                objMaterialType  = static_cast< int32_t >( hitPlane.c[3] + 0.5f );
+                                isectNorm = to_vec3( hitPlane.equation );
+                            } else if ( hitInfo.objType == eSphere ) {
+                                const Sphere& hitSphere = spheres[ hitInfo.objIdx ];
+                                objMaterialType  = static_cast< int32_t >( hitSphere.c[3] + 0.5f );
+                                objEmissiveColor = to_vec3( hitSphere.e );
+                                objDiffuseColor  = to_vec3( hitSphere.c );
+                                isectNorm = normalize( sub( isectPos, to_vec3( hitSphere.geo ) ) );
+                            }                            
+                            
+                            vec3 nl = dot( isectNorm, ray.d ) < 0.0f ? isectNorm : mul( isectNorm, -1.0f );
+                            accrad = add( accrad, mul( accmat, mul( to_vec3( objEmissiveColor ), emissive ) ) );      // add emssivie term only if emissive flag is set to 1
+                            //accmat *= objDiffuseColor.xyz;
+                            accmat = mul( accmat, to_vec3( objDiffuseColor ) );
+                            
+                            vec3 rnd = rand01( randSeed );
+                            
+                            float p = std::max(std::max(objDiffuseColor[0], objDiffuseColor[1]), objDiffuseColor[2]);  // max reflectance
+                            
+                            if (depth > 5) {
+                                if (rnd[2] >= p) {
+                                    break;  // Russian Roulette ray termination
+                                } else {
+                                    accmat = mul( accmat, 1.0f / p );       // Energy compensation of surviving rays
+                                }
+                            }
+                            
+                            if ( objMaterialType == eDiffuseMaterial ) { //-- Ideal DIFFUSE reflection
+                                for (int i = 0; i < _countof(spheres); i++) { // Direct Illumination: Next Event Estimation over any present lights
+                                    const Sphere& ls = spheres[i];
+                                    //if ( all( equal( ls.e, vec3{0.0f, 0.0f, 0.0f } ) ) ) { continue; } // skip non-emissive spheres 
+                                    if ( ls.e[0] == 0.0f && ls.e[1] == 0.0f && ls.e[2] == 0.0f ) { continue; } // skip non-emissive spheres 
+                                    vec3 xc = sub( to_vec3( ls.geo ), isectPos );
+                                    vec3 sw = normalize(xc);
+                                    vec3 su = normalize(cross((abs(sw[0])>0.1f ? vec3{0.0f,1.0f,0.0f} : vec3{1.0f,0.0f,0.0f}), sw));
+                                    vec3 sv = cross(sw,su);
+                                    float cos_a_max = sycl::sqrt(float(1.0f - ls.geo[3]*ls.geo[3] / dot(xc,xc)));
+                                    float cos_a = 1 - rnd[0] + rnd[0]*cos_a_max;
+                                    float sin_a = sycl::sqrt(1.0f - cos_a*cos_a);
+                                    float phi = 2.0f * pi * rnd[1];
+                                    vec3 l = normalize( add( add( mul( su, cos(phi)*sin_a ), mul( sv, sin(phi)*sin_a ) ), mul( sw, cos_a ) ) );   // sampled direction towards light
+                                    HitInfo hitInfo_ne;
+                                    if ( intersect( Ray{ isectPos, l }, planes, spheres, hitInfo_ne ) && hitInfo_ne.objType == eSphere && hitInfo_ne.objIdx == i ) {      // test if shadow ray hits this light source
+                                        float omega = 2.0f * pi * (1.0f-cos_a_max);
+                                        //accrad += accmat / pi * max(dot(l,nl),0.0f) * ls.e * omega;   // brdf term objDiffuseColor.xyz already in accmat, 1/pi for brdf
+                                        vec3 newAccmat = mul( mul( accmat, 1.0f / pi * std::max(dot(l,nl),0.0f) ), mul( to_vec3( ls.e ), omega ) );
+                                        accrad = add( accrad, newAccmat );
                                     }
                                 }
-                                
-                                if (obj.c[3] == 1.0f) { //-- Ideal DIFFUSE reflection
-                                    for (int i = 0; i < _countof(spheres); i++) { // Direct Illumination: Next Event Estimation over any present lights
-                                        const Sphere& ls = spheres[i];
-                                        //if ( all( equal( ls.e, vec3{0.0f, 0.0f, 0.0f } ) ) ) { continue; } // skip non-emissive spheres 
-                                        if ( ls.e[0] == 0.0f && ls.e[1] == 0.0f && ls.e[2] == 0.0f ) { continue; } // skip non-emissive spheres 
-                                        vec3 xls, nls;
-                                        vec3 xc = sub( to_vec3( ls.geo ), isectPos );
-                                        vec3 sw = normalize(xc);
-                                        vec3 su = normalize(cross((abs(sw[0])>0.1f ? vec3{0.0f,1.0f,0.0f} : vec3{1.0f,0.0f,0.0f}), sw));
-                                        vec3 sv = cross(sw,su);
-                                        float cos_a_max = sycl::sqrt(float(1.0f - ls.geo[3]*ls.geo[3] / dot(xc,xc)));
-                                        float cos_a = 1 - rnd[0] + rnd[0]*cos_a_max;
-                                        float sin_a = sycl::sqrt(1.0f - cos_a*cos_a);
-                                        float phi = 2.0f * pi * rnd[1];
-                                        vec3 l = normalize( add( add( mul( su, cos(phi)*sin_a ), mul( sv, sin(phi)*sin_a ) ), mul( sw, cos_a ) ) );   // sampled direction towards light
-                                        uint32_t idls = 0; 
-                                        if ( intersect( Ray{ isectPos, l }, spheres, idls, xls, nls ) && idls == i ) {      // test if shadow ray hits this light source
-                                            float omega = 2.0f * pi * (1.0f-cos_a_max);
-                                            //accrad += accmat / pi * max(dot(l,nl),0.0f) * ls.e * omega;   // brdf term obj.c.xyz already in accmat, 1/pi for brdf
-                                            vec3 newAccmat = mul( mul( accmat, 1.0f / pi * std::max(dot(l,nl),0.0f) ), mul( to_vec3( ls.e ), omega ) );
-                                            accrad = add( accrad, newAccmat );
-                                        }
-                                    }
-                                    // Indirect Illumination: cosine-weighted importance sampling
-                                    const float r1 = 2 * pi * rnd[0];
-                                    const float r2 = rnd[1];
-                                    const float r2s = sycl::sqrt(r2);
-                                    vec3 w = nl;
-                                    vec3 u = normalize((cross(abs(w[0])>0.1f ? vec3{0.0f,1.0f,0.0f} : vec3{1.0f,0.0f,0.0f}, w)));
-                                    vec3 v = cross(w,u);
-                                    r = Ray{ isectPos, normalize( add( mul( u, cos(r1)*r2s ), add( mul( v, sin(r1)*r2s ), mul( w, sycl::sqrt(1.0f - r2) ) ) ) ) };
-                                    emissive = 0.0f;   // in the next bounce, consider reflective part only!
-                                } else if (obj.c[3] == 2.0f) { //-- Ideal SPECULAR reflection
-                                    r = Ray{ isectPos, reflect( r.d, isectNorm ) };  
-                                    emissive = 1.0f; 
-                                } else if (obj.c[3] == 3.0f) { //-- Ideal dielectric REFRACTION
-                                    const bool into = ( isectNorm[0]==nl[0] && isectNorm[1]==nl[1] && isectNorm[2]==nl[2] );
-                                    constexpr float nc=1.0f;
-                                    constexpr float nt=1.5f;
-                                    const float nnt = ( into ? nc/nt : nt/nc );
-                                    const float ddn = dot( r.d, nl );
-                                    const float cos2t = 1.0f - nnt * nnt * ( 1.0f - ddn * ddn );
-                                    if (cos2t >= 0.0f) {     // Fresnel reflection/refraction
-                                        const float mulFactor = ( into ? 1.0f : -1.0f ) * ( ddn * nnt + sycl::sqrt( cos2t ) );
-                                        const vec3 tDir = normalize( sub( mul( r.d, nnt ), mul( isectNorm, mulFactor ) ) );
-                                        const float a = nt - nc;
-                                        const float b = nt + nc;
-                                        const float R0 = ( a * a ) / ( b * b );
-                                        const float c = 1.0f - ( into ? -ddn : dot( tDir, isectNorm ) );
-                                        const float Re = R0 + ( 1.0f - R0 ) * c * c * c * c * c;
-                                        const float Tr = 1.0f - Re;
-                                        const float P = 0.25f + 0.5f*Re;
-                                        const float RP = Re / P;
-                                        const float TP = Tr / ( 1.0f - P );
-                                        r = Ray{ isectPos, rnd[0] < P ? reflect( r.d, isectNorm ) : tDir };      // pick reflection with probability P
-                                        //accmat *=  rnd[0] < P ? RP : TP;                     // energy compensation
-                                        accmat = mul( accmat, rnd[0] < P ? RP : TP );                                        
-                                    } else {
-                                        r = Ray{ isectPos, reflect( r.d, isectNorm ) };                      // Total internal reflection
-                                    }
-                                    emissive = 1.0f; 
+                                // Indirect Illumination: cosine-weighted importance sampling
+                                const float r1 = 2 * pi * rnd[0];
+                                const float r2 = rnd[1];
+                                const float r2s = sycl::sqrt(r2);
+                                vec3 w = nl;
+                                vec3 u = normalize((cross(abs(w[0])>0.1f ? vec3{0.0f,1.0f,0.0f} : vec3{1.0f,0.0f,0.0f}, w)));
+                                vec3 v = cross(w,u);
+                                ray = Ray{ isectPos, normalize( add( mul( u, cos(r1)*r2s ), add( mul( v, sin(r1)*r2s ), mul( w, sycl::sqrt(1.0f - r2) ) ) ) ) };
+                                emissive = 0.0f;   // in the next bounce, consider reflective part only!
+                            } else if ( objMaterialType == eReflectiveMaterial ) { //-- Ideal SPECULAR reflection
+                                ray = Ray{ isectPos, reflect( ray.d, isectNorm ) };  
+                                emissive = 1.0f; 
+                            } else if ( objMaterialType == eRefractiveMaterial ) { //-- Ideal dielectric REFRACTION
+                                const bool into = ( isectNorm[0]==nl[0] && isectNorm[1]==nl[1] && isectNorm[2]==nl[2] );
+                                constexpr float nc=1.0f;
+                                constexpr float nt=1.5f;
+                                const float nnt = ( into ? nc/nt : nt/nc );
+                                const float ddn = dot( ray.d, nl );
+                                const float cos2t = 1.0f - nnt * nnt * ( 1.0f - ddn * ddn );
+                                if (cos2t >= 0.0f) {     // Fresnel reflection/refraction
+                                    const float mulFactor = ( into ? 1.0f : -1.0f ) * ( ddn * nnt + sycl::sqrt( cos2t ) );
+                                    const vec3 tDir = normalize( sub( mul( ray.d, nnt ), mul( isectNorm, mulFactor ) ) );
+                                    const float a = nt - nc;
+                                    const float b = nt + nc;
+                                    const float R0 = ( a * a ) / ( b * b );
+                                    const float c = 1.0f - ( into ? -ddn : dot( tDir, isectNorm ) );
+                                    const float Re = R0 + ( 1.0f - R0 ) * c * c * c * c * c;
+                                    const float Tr = 1.0f - Re;
+                                    const float P = 0.25f + 0.5f*Re;
+                                    const float RP = Re / P;
+                                    const float TP = Tr / ( 1.0f - P );
+                                    ray = Ray{ isectPos, rnd[0] < P ? reflect( ray.d, isectNorm ) : tDir };      // pick reflection with probability P
+                                    //accmat *=  rnd[0] < P ? RP : TP;                     // energy compensation
+                                    accmat = mul( accmat, rnd[0] < P ? RP : TP );                                        
+                                } else {
+                                    ray = Ray{ isectPos, reflect( ray.d, isectNorm ) };                      // Total internal reflection
                                 }
+                                emissive = 1.0f; 
+                            }
                             
-                            } 
                         }
 
                         // accRad[gid] += vec4(accrad / samps.y, 0);   // <<< accumulate radiance   vvv write 8bit rgb gamma encoded color

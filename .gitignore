@@ -20,6 +20,7 @@ a.out
 
 *.ppm
 *.png
+!512x512@8Kspp.png
 !models/**/*.png
 *.jpg
 !models/**/*.jpg

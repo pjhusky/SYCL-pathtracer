@@ -27,127 +27,12 @@ using vec4 = std::array<float, 4>;
 namespace {
 
     inline float clamp(const float x) { 
-        //return x < 0.0f ? 0.0f : x > 1.0f ? 1.0f : x; 
         return std::max( std::min( 1.0f, x ), 0.0f );
     }
 
-    inline float clamp(const float x, const float minVal, const float maxVal) { 
-        return std::max( std::min( maxVal, x ), minVal ); 
-    }
-
-    inline int toInt(float x) { return int(sycl::pow(clamp(x), 1.0f / 2.2f) * 255.0f + 0.5f); }		// performs gamma correction!
-
-    template<typename val_T, size_t numElements>
-    inline std::array<val_T, 3> to_vec3( const std::array<val_T, numElements>& vec ) {
-        assert( numElements == 4 );
-        return std::array<val_T, 3>{ vec[0], vec[1], vec[2] };
-    }
-
-    template<typename val_T, size_t numElements> 
-    inline std::array<val_T, 4> to_vec4( const std::array<val_T, numElements>& vec ) {
-        assert( numElements == 3 );
-        return std::array<val_T, 4>{ vec[0], vec[1], vec[2], 0.0f };
-    }
-
-    template<typename val_T, size_t numElements>
-    inline std::array<val_T, numElements> add( const std::array<val_T, numElements>& lhs,
-                                               const std::array<val_T, numElements>& rhs ) {
-        
-        std::array<val_T, numElements> retVal;
-        for ( size_t i = 0; i < numElements; i++ ) {
-            retVal[ i ] = lhs[ i ] + rhs[ i ];
-        }
-        return retVal;
-    }
-
-    template<typename val_T, size_t numElements>
-    inline std::array<val_T, numElements> sub( const std::array<val_T, numElements>& lhs,
-                                               const std::array<val_T, numElements>& rhs ) {
-        
-        std::array<val_T, numElements> retVal;
-        for ( size_t i = 0; i < numElements; i++ ) {
-            retVal[ i ] = lhs[ i ] - rhs[ i ];
-        }
-        return retVal;
-    }
-
-    template<typename val_T, size_t numElements>
-    inline std::array<val_T, numElements> mul( const std::array<val_T, numElements>& lhs,
-                                               const val_T factor ) {
-        
-        std::array<val_T, numElements> retVal;
-        for ( size_t i = 0; i < numElements; i++ ) {
-            retVal[ i ] = lhs[ i ] * factor;
-        }
-        return retVal;
-    }
-
-    template<typename val_T, size_t numElements>
-    inline std::array<val_T, numElements> mul( const std::array<val_T, numElements>& lhs,
-                                               const std::array<val_T, numElements>& rhs ) {
-        
-        std::array<val_T, numElements> retVal;
-        for ( size_t i = 0; i < numElements; i++ ) {
-            retVal[ i ] = lhs[ i ] * rhs[ i ];
-        }
-        return retVal;
-    }
-
-    template<typename val_T, size_t numElements>
-    inline val_T dot( const std::array<val_T, numElements>& lhs,
-                      const std::array<val_T, numElements>& rhs ) {
-        
-        val_T accum = val_T{0};
-        for ( size_t i = 0; i < numElements; i++ ) {
-            accum += lhs[ i ] * rhs[ i ];
-        }
-        return accum;
-    }
-
-    template<typename val_T, size_t numElements>
-    inline std::array<val_T, numElements> normalize( const std::array<val_T, numElements>& vec ) {
-        return mul( vec, val_T{ 1 } / sycl::sqrt( dot( vec, vec ) ) );
-    }
-
-    template<typename val_T>
-    inline std::array<val_T, 3> cross( const std::array<val_T, 3>& lhs,
-                                       const std::array<val_T, 3>& rhs ) {
-        
-        std::array<val_T, 3> retVal;
-        retVal[0] = lhs[1] * rhs[2] - lhs[2] * rhs[1];
-        retVal[1] = lhs[2] * rhs[0] - lhs[0] * rhs[2];
-        retVal[2] = lhs[0] * rhs[1] - lhs[1] * rhs[0];
-        
-        return retVal;
-    }
-
-    vec3 reflect( vec3 inVec, vec3 normal ) {
-        return sub( inVec, mul( normal, 2.0f * dot( inVec, normal ) ) );
-    }
-    
-
-    // http://www.jcgt.org/published/0009/03/02/
-    // https://www.shadertoy.com/view/XlGcRh
-    vec3 rand01( uint3& v ) {
-        v[0] = v[0] * 1664525u + 1013904223u;
-        v[1] = v[1] * 1664525u + 1013904223u;
-        v[2] = v[2] * 1664525u + 1013904223u;
-
-        v[0] += v[1]*v[2];
-        v[1] += v[2]*v[0];
-        v[2] += v[0]*v[1];
-
-        v[0] ^= ( v[0] >> 16u );
-        v[1] ^= ( v[1] >> 16u );
-        v[2] ^= ( v[2] >> 16u );
-
-        v[0] += v[1]*v[2];
-        v[1] += v[2]*v[0];
-        v[2] += v[0]*v[1];
-
-        vec3 fval{ static_cast<float>(v[0]), static_cast<float>(v[1]), static_cast<float>(v[2]) };
-        return mul( fval, (1.0f/static_cast<float>(0xffffffffU)) );
-    }    
+    inline int toInt(float x) { 
+        return int(sycl::pow(clamp(x), 1.0f / 2.2f) * 255.0f + 0.5f); 
+    }		// performs gamma correction!
 
     // Create an exception handler for asynchronous SYCL exceptions
     static auto exception_handler = [](sycl::exception_list e_list) {
@@ -199,8 +84,10 @@ int main(int argc, char *argv[]) {
             return -1;
         }
 
-        vec2 centerComplex{ 0.0f, 0.0f };
-        vec2 halfDimComplex{ 2.0f, 2.0f };
+        // vec2 centerComplex{ 0.0f, 0.0f };
+        // vec2 halfDimComplex{ 2.0f, 2.0f };
+        vec2 centerComplex{ -0.3f, 0.4f };
+        vec2 halfDimComplex{ 1.0f, 1.0f };
 
         // Initialize radiances with 0.0f
         for (size_t i = 0; i < numPixels; i++) { pMandel[i] = vec4{ 0.0f, 0.0f, 0.0f, 0.0f }; }
@@ -256,7 +143,6 @@ int main(int argc, char *argv[]) {
             // q.parallel_for() is an asynchronous call. SYCL runtime enqueues and runs
             // the kernel asynchronously. Wait for the asynchronous call to complete.
             e.wait();            
-
             
         }
 
@@ -267,7 +153,7 @@ int main(int argc, char *argv[]) {
 
         //-- write inverse sensor image to file
         FILE *file;
-        int err = fileopen(&file, "sycl-mandelbrot.ppm");
+        int err = fileopen(&file, "sycl-mandelbrot-usm.ppm");
         fprintf(file, "P3\n");
         fprintf(file, "# num iterations: %d\n", numIterations);
         fprintf(file, "# rendering time: %f s\n", duration);

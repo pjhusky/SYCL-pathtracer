@@ -13,17 +13,21 @@ CC = gcc $(CFLAGS)
 EXTENSION=.exe
 
 SYCL_PATHTRACER=sycl-pathtracer${EXTENSION}
-SYCL_MANDELBROT=sycl-mandelbrot${EXTENSION}
+SYCL_MANDELBROT_USM=sycl-mandelbrot-usm${EXTENSION}
+SYCL_MANDELBROT_BUFFER=sycl-mandelbrot-buffer${EXTENSION}
 
 MAKEFILE=Makefile
 
-all: ${SYCL_PATHTRACER} ${SYCL_MANDELBROT}
+all: ${SYCL_PATHTRACER} ${SYCL_MANDELBROT_USM} ${SYCL_MANDELBROT_BUFFER}
 
 ${SYCL_PATHTRACER}: sycl-pathtracer.cpp ${MAKEFILE}
 	${CXX} -fsycl sycl-pathtracer.cpp  -o ${SYCL_PATHTRACER}
 
-${SYCL_MANDELBROT}: sycl-mandelbrot.cpp ${MAKEFILE}
-	${CXX} -fsycl sycl-mandelbrot.cpp -o ${SYCL_MANDELBROT}
+${SYCL_MANDELBROT_USM}: sycl-mandelbrot-usm.cpp ${MAKEFILE}
+	${CXX} -fsycl sycl-mandelbrot-usm.cpp -o ${SYCL_MANDELBROT_USM}
+
+${SYCL_MANDELBROT_BUFFER}: sycl-mandelbrot-buffer.cpp ${MAKEFILE}
+	${CXX} -fsycl sycl-mandelbrot-buffer.cpp -o ${SYCL_MANDELBROT_BUFFER}
 	
 clean:
-	${DEL} ${SYCL_PATHTRACER} ${SYCL_MANDELBROT}
+	${DEL} ${SYCL_PATHTRACER} ${SYCL_MANDELBROT_USM} ${SYCL_MANDELBROT_BUFFER}

@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
             // Create the range object for the arrays.
             sycl::range<1> num_items{numPixels};
 
-            sycl::buffer mandelPixels_Device( (mandelPixels_Host) );
+            sycl::buffer mandelPixels_Device{ mandelPixels_Host };
 
             q.submit([&](sycl::handler& h) {
             

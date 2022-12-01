@@ -310,9 +310,8 @@ int main(int argc, char *argv[]) {
         // unified shared memory so that both CPU and device can access them.
         const uint32_t numPixels = resx * resy;
         vec4*   pRadiances = sycl::malloc_shared<vec4>(numPixels, q);
-        Sphere* pSpheres   = sycl::malloc_shared<Sphere>(_countof(spheres), q);
 
-        if ( pRadiances == nullptr || pSpheres == nullptr ) {
+        if ( pRadiances == nullptr ) {
             std::cout << "Shared memory allocation failure.\n";
             return -1;
         }
@@ -498,7 +497,7 @@ int main(int argc, char *argv[]) {
 
         //-- write inverse sensor image to file
         FILE *file;
-        int err = fileopen(&file, "image-cpu.ppm");
+        int err = fileopen(&file, "sycl-pathtracer.ppm");
         fprintf(file, "P3\n");
         fprintf(file, "# spp: %d\n", spp);
         fprintf(file, "# rendering time: %f s\n", duration);
@@ -508,7 +507,6 @@ int main(int argc, char *argv[]) {
         }
 
         sycl::free(pRadiances, q);
-        sycl::free(pSpheres, q);
 
     } catch (sycl::exception const &e) {
         std::cout << "An exception is caught: " << e.what() << std::endl;

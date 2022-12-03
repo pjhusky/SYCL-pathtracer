@@ -200,15 +200,12 @@ namespace {
 
         float d, t = inf;
 
-        for (uint32_t i = 0; i < _countof( planes ); i++)
-        {
+        for (uint32_t i = 0; i < _countof( planes ); i++) {
             const vec4 planeEqu = pPlanes[i].equation;
             const float denom = dot( ray.d, to_vec3( planeEqu ) );
-            if (denom > eps)
-            {
+            if (denom > eps) {
                 d = (planeEqu[3] - dot( ray.o, to_vec3( planeEqu ) )) / denom;
-                if (d < t)
-                {
+                if (d < t) {
                     t = d;
                     hitInfo.objType = ePlane;
                     hitInfo.objIdx = i;
@@ -216,8 +213,7 @@ namespace {
             }
         }
 
-        for (uint32_t i = 0; i < _countof( spheres ); i++)
-        {
+        for (uint32_t i = 0; i < _countof( spheres ); i++) {
             const Sphere& s = pSpheres[i]; // perform intersection test in double precision
             // dvec3 oc = dvec3(s.geo.xyz) - ray.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0
 
@@ -228,25 +224,20 @@ namespace {
             float b = dot( oc, ray.d );
             float det = b * b - dot( oc, oc ) + s.geo[3] * s.geo[3];
 
-            if (det < 0.0f)
-            {
+            if (det < 0.0f) {
                 continue;
-            }
-            else
-            {
+            } else {
                 det = sycl::sqrt( det );
                 // det=sqrt(det);
             }
             d = (d = (b - det)) > eps ? d : ((d = (b + det)) > eps ? d : inf);
-            if (d < t)
-            {
+            if (d < t) {
                 t = d;
                 hitInfo.objType = eSphere;
                 hitInfo.objIdx = i;
             }
         }
-        if (t < inf)
-        {
+        if (t < inf) {
             hitInfo.rayT = t;
             return true;
         }
@@ -255,8 +246,7 @@ namespace {
 
     // http://www.jcgt.org/published/0009/03/02/
     // https://www.shadertoy.com/view/XlGcRh
-    vec3 rand01( uint3& v )
-    {
+    vec3 rand01( uint3& v ) {
         v[0] = v[0] * 1664525u + 1013904223u;
         v[1] = v[1] * 1664525u + 1013904223u;
         v[2] = v[2] * 1664525u + 1013904223u;
@@ -278,16 +268,12 @@ namespace {
     }
 
     // Create an exception handler for asynchronous SYCL exceptions
-    static auto exception_handler = []( sycl::exception_list e_list )
-    {
-        for (std::exception_ptr const& e : e_list)
-        {
-            try
-            {
+    static auto exception_handler = []( sycl::exception_list e_list ) {
+        for (std::exception_ptr const& e : e_list) {
+            try {
                 std::rethrow_exception( e );
             }
-            catch (std::exception const& e)
-            {
+            catch (std::exception const& e) {
 #if _DEBUG
                 std::cout << "Failure" << std::endl;
 #endif

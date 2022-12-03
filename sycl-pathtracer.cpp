@@ -1,6 +1,3 @@
-// #define _USE_MATH_DEFINES
-// #include <math.h>
-// #include <iostream>
 #include <algorithm>
 
 #include <stdlib.h> // pocketpt, single-source GLSL path tracer by Reinhold Preiner, 2020
@@ -12,12 +9,12 @@
 
 #include <sycl/sycl.hpp>
 
-#define BUFFER_MODE_USM 0
-#define BUFFER_MODE_BUFFER 1
-#define BUFFER_MODE BUFFER_MODE_BUFFER
+#define BUFFER_MODE_USM     0
+#define BUFFER_MODE_BUFFER  1
+#define BUFFER_MODE         BUFFER_MODE_USM
 
 // ### material types
-#define eDiffuseMaterial 1
+#define eDiffuseMaterial    1
 #define eReflectiveMaterial 2
 #define eRefractiveMaterial 3
 
@@ -25,29 +22,22 @@
 #if defined(_WIN32) || defined(WIN32)
 int fileopen( FILE** f, const char* filename ) { return (int)fopen_s( f, filename, "w" ); }
 #elif defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
-int fileopen( FILE** f, const char* filename )
-{
-    *f = fopen( filename, "w" );
-    return 0;
-}
+int fileopen( FILE** f, const char* filename ) { *f = fopen( filename, "w" ); return 0; }
 #endif
 
 using uint3 = std::array<uint32_t, 3>;
-using vec2 = std::array<float, 2>;
-using vec3 = std::array<float, 3>;
-using vec4 = std::array<float, 4>;
+using vec2  = std::array<float, 2>;
+using vec3  = std::array<float, 3>;
+using vec4  = std::array<float, 4>;
 
-namespace
-{
+namespace {
     constexpr float pi = 3.141592653589793f;
 
-    struct RandomSeed
-    {
+    struct RandomSeed {
         uint32_t s1, s2;
     };
 
-    struct Ray
-    {
+    struct Ray {
         vec3 o;
         vec3 d;
     };
@@ -59,23 +49,20 @@ namespace
     constexpr uint32_t eSphere = 0;
     constexpr uint32_t ePlane = 1;
 
-    struct HitInfo
-    {
+    struct HitInfo {
         float rayT;
         // eObjType objType;
         uint32_t objType;
         uint32_t objIdx;
     };
 
-    struct Plane
-    {
+    struct Plane {
         vec4 equation;
         vec4 e;
         vec4 c;
     };
 
-    struct Sphere
-    {
+    struct Sphere {
         vec4 geo;
         vec4 e;
         vec4 c;
@@ -104,41 +91,35 @@ namespace
         vec4{0.0f, 2.0f * 0.8f, 0.0f, 0.2f}, vec4{100.0f, 100.0f, 100.0f, 0.0f}, vec4{0.000f, 0.000f, 0.000f, 1.0f}, // Light
     };
 
-    inline float clamp( const float x )
-    {
+    inline float clamp( const float x ) {
         // return x < 0.0f ? 0.0f : x > 1.0f ? 1.0f : x;
         return std::max( std::min( 1.0f, x ), 0.0f );
     }
 
-    inline float clamp( const float x, const float minVal, const float maxVal )
-    {
+    inline float clamp( const float x, const float minVal, const float maxVal ) {
         return std::max( std::min( maxVal, x ), minVal );
     }
 
     inline int toInt( float x ) { return int( sycl::pow( clamp( x ), 1.0f / 2.2f ) * 255.0f + 0.5f ); } // performs gamma correction!
 
     template <typename val_T, size_t numElements>
-    inline std::array<val_T, 3> to_vec3( const std::array<val_T, numElements>& vec )
-    {
+    inline std::array<val_T, 3> to_vec3( const std::array<val_T, numElements>& vec ) {
         assert( numElements == 4 );
         return std::array<val_T, 3>{vec[0], vec[1], vec[2]};
     }
 
     template <typename val_T, size_t numElements>
-    inline std::array<val_T, 4> to_vec4( const std::array<val_T, numElements>& vec )
-    {
+    inline std::array<val_T, 4> to_vec4( const std::array<val_T, numElements>& vec ) {
         assert( numElements == 3 );
         return std::array<val_T, 4>{vec[0], vec[1], vec[2], 0.0f};
     }
 
     template <typename val_T, size_t numElements>
     inline std::array<val_T, numElements> add( const std::array<val_T, numElements>& lhs,
-        const std::array<val_T, numElements>& rhs )
-    {
+        const std::array<val_T, numElements>& rhs ) {
 
         std::array<val_T, numElements> retVal;
-        for (size_t i = 0; i < numElements; i++)
-        {
+        for (size_t i = 0; i < numElements; i++) {
             retVal[i] = lhs[i] + rhs[i];
         }
         return retVal;
@@ -146,12 +127,10 @@ namespace
 
     template <typename val_T, size_t numElements>
     inline std::array<val_T, numElements> sub( const std::array<val_T, numElements>& lhs,
-        const std::array<val_T, numElements>& rhs )
-    {
+        const std::array<val_T, numElements>& rhs ) {
 
         std::array<val_T, numElements> retVal;
-        for (size_t i = 0; i < numElements; i++)
-        {
+        for (size_t i = 0; i < numElements; i++) {
             retVal[i] = lhs[i] - rhs[i];
         }
         return retVal;
@@ -159,12 +138,10 @@ namespace
 
     template <typename val_T, size_t numElements>
     inline std::array<val_T, numElements> mul( const std::array<val_T, numElements>& lhs,
-        const val_T factor )
-    {
+        const val_T factor ) {
 
         std::array<val_T, numElements> retVal;
-        for (size_t i = 0; i < numElements; i++)
-        {
+        for (size_t i = 0; i < numElements; i++) {
             retVal[i] = lhs[i] * factor;
         }
         return retVal;
@@ -172,12 +149,10 @@ namespace
 
     template <typename val_T, size_t numElements>
     inline std::array<val_T, numElements> mul( const std::array<val_T, numElements>& lhs,
-        const std::array<val_T, numElements>& rhs )
-    {
+        const std::array<val_T, numElements>& rhs ) {
 
         std::array<val_T, numElements> retVal;
-        for (size_t i = 0; i < numElements; i++)
-        {
+        for (size_t i = 0; i < numElements; i++) {
             retVal[i] = lhs[i] * rhs[i];
         }
         return retVal;
@@ -185,27 +160,23 @@ namespace
 
     template <typename val_T, size_t numElements>
     inline val_T dot( const std::array<val_T, numElements>& lhs,
-        const std::array<val_T, numElements>& rhs )
-    {
+        const std::array<val_T, numElements>& rhs ) {
 
         val_T accum = val_T{ 0 };
-        for (size_t i = 0; i < numElements; i++)
-        {
+        for (size_t i = 0; i < numElements; i++) {
             accum += lhs[i] * rhs[i];
         }
         return accum;
     }
 
     template <typename val_T, size_t numElements>
-    inline std::array<val_T, numElements> normalize( const std::array<val_T, numElements>& vec )
-    {
+    inline std::array<val_T, numElements> normalize( const std::array<val_T, numElements>& vec ) {
         return mul( vec, val_T{ 1 } / sycl::sqrt( dot( vec, vec ) ) );
     }
 
     template <typename val_T>
     inline std::array<val_T, 3> cross( const std::array<val_T, 3>& lhs,
-        const std::array<val_T, 3>& rhs )
-    {
+        const std::array<val_T, 3>& rhs ) {
 
         std::array<val_T, 3> retVal;
         retVal[0] = lhs[1] * rhs[2] - lhs[2] * rhs[1];
@@ -215,16 +186,14 @@ namespace
         return retVal;
     }
 
-    vec3 reflect( vec3 inVec, vec3 normal )
-    {
+    vec3 reflect( vec3 inVec, vec3 normal ) {
         return sub( inVec, mul( normal, 2.0f * dot( inVec, normal ) ) );
     }
 
     bool intersect( const Ray& ray,
         const Plane* const pPlanes,
         const Sphere* const pSpheres,
-        HitInfo& hitInfo )
-    { // intersect ray with scene
+        HitInfo& hitInfo ) { // intersect ray with scene
 
         constexpr float inf = 1e20f;
         constexpr float eps = 1e-4f;
@@ -586,26 +555,27 @@ int main( int argc, char* argv[] )
 
                         // accRad[gid] += vec4(accrad / samps.y, 0);   // <<< accumulate radiance   vvv write 8bit rgb gamma encoded color
                         vec3 scaledRad3 = mul( accrad, recip_spp );
-        #if (BUFFER_MODE == BUFFER_MODE_USM)
+                    #if (BUFFER_MODE == BUFFER_MODE_USM)
                         pRadiances[addr] = add( pRadiances[addr], to_vec4( scaledRad3 ) );
-        #elif (BUFFER_MODE == BUFFER_MODE_BUFFER)
+                    #elif (BUFFER_MODE == BUFFER_MODE_BUFFER)
                         radiances_Accessor[addr] = add( radiances_Accessor[addr], to_vec4( scaledRad3 ) );
-        #endif
+                    #endif
                     } );
 
-#if (BUFFER_MODE == BUFFER_MODE_BUFFER)
+            #if (BUFFER_MODE == BUFFER_MODE_BUFFER)
                 } );
-#endif
+            #endif
 
+            #if (BUFFER_MODE == BUFFER_MODE_USM)
+                e.wait();
+            #endif
             }
 
             // q.parallel_for() is an asynchronous call. SYCL runtime enqueues and runs
             // the kernel asynchronously. Wait for the asynchronous call to complete.
-#if (BUFFER_MODE == BUFFER_MODE_USM)
-            e.wait();
-#else
+        #if (BUFFER_MODE == BUFFER_MODE_BUFFER)
             q.wait();
-#endif
+        #endif
         }
 
         auto tend = std::chrono::system_clock::now();

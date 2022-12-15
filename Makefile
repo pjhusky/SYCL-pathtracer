@@ -13,15 +13,19 @@ CC = gcc $(CFLAGS)
 EXTENSION=.exe
 
 SYCL_PATHTRACER=sycl-pathtracer${EXTENSION}
+SYCL_BUSINESS_CARD_RAYTRACER=sycl-business-card-raytracer${EXTENSION}
 SYCL_MANDELBROT_USM=sycl-mandelbrot-usm${EXTENSION}
 SYCL_MANDELBROT_BUFFER=sycl-mandelbrot-buffer${EXTENSION}
 
 MAKEFILE=Makefile
 
-all: ${SYCL_PATHTRACER} ${SYCL_MANDELBROT_USM} ${SYCL_MANDELBROT_BUFFER}
+all: ${SYCL_PATHTRACER} ${SYCL_BUSINESS_CARD_RAYTRACER} ${SYCL_MANDELBROT_USM} ${SYCL_MANDELBROT_BUFFER}
 
 ${SYCL_PATHTRACER}: sycl-pathtracer.cpp ${MAKEFILE}
-	${CXX} -fsycl sycl-pathtracer.cpp  -o ${SYCL_PATHTRACER}
+	${CXX} -fsycl sycl-pathtracer.cpp -o ${SYCL_PATHTRACER}
+
+${SYCL_BUSINESS_CARD_RAYTRACER}: sycl-business-card-raytracer.cpp ${MAKEFILE}
+	${CXX} -fsycl sycl-business-card-raytracer.cpp -o ${SYCL_BUSINESS_CARD_RAYTRACER}
 
 ${SYCL_MANDELBROT_USM}: sycl-mandelbrot-usm.cpp ${MAKEFILE}
 	${CXX} -fsycl sycl-mandelbrot-usm.cpp -o ${SYCL_MANDELBROT_USM}

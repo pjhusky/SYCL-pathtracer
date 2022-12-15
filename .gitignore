@@ -21,6 +21,7 @@ a.out
 *.ppm
 *.png
 !512x512@8Kspp.png
+!sycl-business-card-raytracer.png
 !models/**/*.png
 *.jpg
 !models/**/*.jpg

@@ -196,7 +196,7 @@ void GetColor( unsigned char* img, uint32_t gid ) {
 
     //v cam_dir = !v(-4, -16, 0); // more "orthogonal"
     //v cam_dir = !v(-6, -16, 0);
-    v cam_dir = !v( -10, -16, 0 ); // more "slanted"
+    v cam_dir = !v( -11, -16, 0 ); // more "slanted"
     //v cam_dir = !v(0, -20, 0);
     v cam_up = !(v( 0, 0, 1 ) ^ cam_dir) * .002f;
     v cam_right = !(cam_dir ^ cam_up) * .002f;// * ( static_cast<float>(DIM_X)/static_cast<float>(DIM_Y) );
@@ -208,7 +208,7 @@ void GetColor( unsigned char* img, uint32_t gid ) {
         v delta = cam_up * (RANDOM( g_seed ) - .5f) * 99.0f + cam_right * (RANDOM( g_seed ) - 0.5f) * 99.0f;
         color = Sample(
             //v(17, 16, 8) + delta,
-            v( 23, 24, 8 ) + delta, // move cam to the left and slightly away from the text
+            v( 17.5f, 20, 8 ) + delta, // move cam to the left and slightly away from the text
             !(delta * -1 + (cam_up * (RANDOM( g_seed ) + x) + cam_right * (y + RANDOM( g_seed )) + eye_offset) * 16.0f), g_seed )
             * 3.5f +
             color;
@@ -240,9 +240,6 @@ int main() {
         //    2nd parameter is the kernel, a lambda that specifies what to do per
         //    work item. the parameter of the lambda is the work item id.
         // SYCL supports unnamed lambda kernel by default.
-
-        //!!! printf( "sycl parallel for\n" );
-
         auto e = q.parallel_for(
             numPixels,
             [=]( auto gid ) {
@@ -261,10 +258,8 @@ int main() {
         printf( "P6\n# duration=%fsec\n%d %d 255 ", duration, DIM_X, DIM_Y );
 
         char* c = reinterpret_cast<char*>(dev_bitmap);
-        for (int y = DIM_Y; y--;)
-        {
-            for (int x = DIM_X; x--;)
-            {
+        for ( uint32_t y = DIM_Y; y--; ) {
+            for ( uint32_t x = DIM_X; x--; ) {
                 c = reinterpret_cast<char*>(&dev_bitmap[y * DIM_X * BPP + x * BPP]);
                 printf( "%c%c%c", c[0], c[1], c[2] );
                 c += BPP;

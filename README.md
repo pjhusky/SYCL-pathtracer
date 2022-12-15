@@ -22,6 +22,8 @@ To run, first type `make.bat` to build the executable, followed by `sycl-busines
 ## SYCL Mandelbrot Set
 Furthermore, this repository contains two SYCL samples that both calculate the Mandelbrot - once using `Unified Shared Memory (USM)`, and once using explicit device buffers **[1]**. 
 
+<img src="sycl-mandelbrot-buffer.png" width="512"/>
+
 # References
 
 * **[1]** https://github.com/oneapi-src/oneAPI-samples/tree/master/DirectProgramming/DPC%2B%2B/DenseLinearAlgebra/vector-add/src

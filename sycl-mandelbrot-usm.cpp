@@ -54,8 +54,8 @@ namespace {
 int main(int argc, char *argv[]) {
     
     //-- parse arguments
-    const int32_t numIterations = argc>1 ? atoi(argv[1]) : 126;    // samples per pixel 
-    const int32_t resy = argc>2 ? atoi(argv[2]) : 500;    // vertical pixel resolution
+    const int32_t numIterations = (argc>1) ? atoi(argv[1]) : 126;    // samples per pixel 
+    const int32_t resy = (argc>2) ? atoi(argv[2]) : 500;    // vertical pixel resolution
     const int32_t resx = resy; // horiziontal pixel resolution
     const uint32_t numPixels = resx * resy;
     
